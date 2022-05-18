@@ -185,14 +185,29 @@ int main () {
         if(rho[header_index]>98 && rho[header_index]<116){header_index=header_index+ref_spacing;}
         if(rho[header_index]>119 && rho[header_index+ref_spacing]>119){ref_yes=1;}
     }
+    printf("counter_ref:%d\n",header_index);
+    int counter_first_ref=1, new_header_index;
 
-    int start_sig=header_index-ref_spacing/2, start_ref=header_index; //starting points of ref and signal pulses
+    // .....................NEW COMMENT...............................
+    //locating the start to middle of the first reference if the automatic detection has located on to the last portiion of the ref pulse 
+    while(counter_first_ref<11){
+        if(rho[header_index-counter_first_ref]>119){
+            new_header_index=header_index-counter_first_ref;
+            
+        }
+        counter_first_ref=counter_first_ref+1;
+    }
+   
+
+    int start_sig=new_header_index-ref_spacing/2, start_ref=new_header_index; //starting points of ref and signal pulses
     int counter_data=0; //counter for loop for ref and sig pulse value storage 
     //array declarations for x and p values at Bob
     float bob_x_sig[10000]={0}, bob_p_sig[10000]={0}, bob_amp_sig[10000]={0},bob_phase_sig[10000]={0}; //signals
     float bob_x_ref[10000]={0}, bob_p_ref[10000]={0}, bob_amp_ref[10000]={0},bob_phase_ref[10000]={0}; //references
     float shot_x[10000]={0}, shot_p[10000]={0};
     float corrected_phase[10000]={0},corrx[10000]={0},corrp[10000]={0}; //arrays for phase correction
+    float phase_error[10000]={0}; //array for storing phase error
+    float phase_error_mean=0; //phase error mean 
 
     //separation of x and p values at bob and data values for shot noise calculation
     while(counter_data<block_length){
@@ -215,12 +230,26 @@ int main () {
         //correct phase using phase of adjacent ref pulses
         phase_correction(&bob_phase_sig[counter_data], &bob_phase_ref[counter_data],&bob_amp_sig[counter_data], &corrected_phase[counter_data],&corrx[counter_data],&corrp[counter_data]);
 
+        //..........calculation of phase error:: NEW COMMENT.............
+        phase_error[counter_data]=corrected_phase[counter_data]-phase_alice[counter_data];
+        //wrap around to 2Pi
+        if((phase_error[counter_data]>PI)|| (phase_error[counter_data]< (-1*PI))){
+            phase_error[counter_data]=phase_error[counter_data]-2*PI;
+        }
+        //........phase error mean calculation:: NEW COMMENT..............
+        phase_error_mean=phase_error_mean+phase_error[counter_data];
+
         if(counter_data<30){
             printf("corrx[%d]=%f\n", counter_data,corrx[counter_data]);
             printf("corrp[%d]=%f\n", counter_data,corrp[counter_data]);
+            printf("phase_error[%d]=%f\n",counter_data,phase_error[counter_data]);
         }
         counter_data=counter_data+1;
     }
+    //.....NEW COMMENT:phase_error_mean calculation......
+    phase_error_mean=fabs(phase_error_mean/block_length);
+    printf("\n********* final parameters for this block *******\n\n");
+    printf("phase error mean(radians):%f\n",phase_error_mean);
     
     //call function for excess noise calcualtion 
     float excessnoise= excess_noise(&alice_x[0], &corrx[0], &shot_x[0]);
@@ -253,6 +282,7 @@ float excess_noise (float *alice_x, float *corrx, float *shot_x){
     float sum_alice=0, sum_bob=0,product_sum=0, cov_alice_bob=0, V_alice=0, Va=2.12, shot_noise=0, shot_noise_sum=0, V_bob=0;
     float det_eff=0.62;//detector efficiency
     float T=0, T_1=0,T_snu=0, excess_noise=0, excess_noise_snu=0; //transmittance and excess noise values 
+    float distance=0; //equaivalent distance
 
     int counter=0;
     while(counter<10000){
@@ -289,6 +319,10 @@ float excess_noise (float *alice_x, float *corrx, float *shot_x){
     T_snu=T/(shot_noise);
     T_1=cov_alice_bob*cov_alice_bob/(V_alice*V_alice*det_eff);
     printf("T=%f , T_snu=%f , T_1=%f\n",T,T_snu,T_1);
+    //...............NEW COMMENT:transmittance distance caculation..............
+    distance=log10f(T_snu)*10/(-0.2);
+    printf("distance(km)=%f\n",distance);
+
 
     //excess noise calculation 
     excess_noise=(V_bob-det_eff*T_1*V_alice-shot_noise-0.1*shot_noise)/(det_eff*T_1);
